@@ -1,0 +1,6 @@
+chaospy==4.3.21
+matplotlib==3.8.3
+numpy==2.3.4
+pandas==2.3.3
+PyYAML==6.0.3
+scipy==1.16.2

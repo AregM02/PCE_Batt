@@ -1,0 +1,11 @@
+submodels:
+  - class: GalerkinPCE
+    module: models.submodels.ecm
+    kwargs:
+      with_correlations: true
+      logger_level: DEBUG
+  - class: qOCV_POLY
+    module: models.submodels.ocv
+    kwargs:
+      order: 12
+      logger_level: DEBUG
