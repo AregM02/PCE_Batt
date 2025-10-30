@@ -9,3 +9,9 @@ submodels:
     kwargs:
       order: 12
       logger_level: DEBUG
+      alpha: 0.5
+  - class: Plett_Hysteresis
+    module: models.submodels.ocv
+    kwargs:
+      logger_level: DEBUG
+      g: 0.0001

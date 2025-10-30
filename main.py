@@ -1,19 +1,16 @@
 from cell import Cell
 import matplotlib.pyplot as plt
-from utils import make_data
+from utils import make_data, load_validation, add_trace
 
-dt, time, current, voltage, soc, ocv, T = make_data(short=True)
+time, current, voltage, soc, T, C_nom = load_validation()
 
-cell1 = Cell()
-cell1.soc = soc
-cell1.T = T
-mean, sigma = cell1.solve(current=current, time=time)
+cell = Cell(initial_soc=soc[0], capacity=C_nom, capacity_unc=C_nom*0.01)
+cell.solve(current=current, time=time, temperature=T)
 
 # Plot the solution
 fig, ax = plt.subplots()
-ax.plot(time, voltage, label='Measured', c='b')
-ax.fill_between(time, mean - 2 * sigma, mean + 2 * sigma, alpha=0.3, color='r')
-ax.plot(time, mean, c='r', label='Simulated')
+ax.plot(time, soc, label='Measurement', c='b')
+add_trace(ax, time, cell.soc.mean, cell.soc.std, name='soc', c='r')
 fig.legend()
 ax.set_xlabel('t/[s]')
 plt.show()

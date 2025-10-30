@@ -170,12 +170,13 @@ class GalerkinPCE(ECM):
             b = np.concatenate([e_c1_phi_phi, e_c2_phi_phi])
 
             return (-np.sum(x * H, -1) + current_t * b) / np.concatenate([self.norms, self.norms])
-
+        
 
         coefficients = solve_ivp(
                                 fun=rhs, max_step=self.max_solver_step, y0=np.zeros(2 * len(self.expansion)),
                                 t_span=(time[0], time[-1]), t_eval=time
                                 ).y.T
+        
         
         coefficients1, coefficients2 = (
                                         coefficients[:, :len(self.expansion)], 

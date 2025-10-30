@@ -4,7 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def make_data(short=False, plot=False):
+def make_data(short=True, plot=False):
     """Creates a pulse profile"""
     
     if short:
@@ -22,15 +22,15 @@ def make_data(short=False, plot=False):
             ib[dist * n + 600:dist * n + 700] = -1.
             ib[dist * n + 2000:dist * n + 2540] = -2.
 
-    SOC = 1 + np.cumsum(dt * ib / (3600 * 3))
-    ocv, vb, T = np.zeros_like(ib), np.zeros_like(ib), 25 * np.ones_like(ib)
+    soc = 1 + np.cumsum(dt * ib / (3600 * 3))
+    vb, T = np.zeros_like(ib), 25 * np.ones_like(ib)
 
     if plot:        
         plt.plot(ib)
-        plt.plot(SOC)
+        plt.plot(soc)
         plt.show()
 
-    return dt, time, ib, vb, SOC, ocv, T, 
+    return time, ib, vb, soc, T, 3.0
 
 
 make_data()

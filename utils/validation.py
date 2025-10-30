@@ -11,12 +11,15 @@ def load_validation():
     name = np.random.choice(fnames)
     df = pd.read_parquet(name)
 
+    df_kap = df[(df.Prozedur == 'jri_KapTest_C2') & (df.Zustand == 'CHA')]
+    cap = (df_kap.Strom*df_kap.Zeit.diff()).cumsum().iloc[-1]/3600 # determine the exact capacity
+
     df = df.drop_duplicates(subset='Programmdauer')
     df.Programmdauer = df.Programmdauer/1000
     dt = df.Programmdauer.diff()
 
     ref = df[df.Prozedur == 'jri_KapTest_C2'].index[0]
-    soc = np.cumsum(dt * df.Strom / (3600 * 3.))
+    soc = np.cumsum(dt * df.Strom / (3600 * cap))
     soc = soc + 1. - soc.loc[ref]
     df['soc'] = soc
 
@@ -27,4 +30,4 @@ def load_validation():
     df = df.loc[start:end]
     time, current, voltage, soc, T = df[['Programmdauer', 'Strom', 'Spannung', 'soc', 'Temp']].values.T
 
-    return (time, current, voltage, soc, T)
+    return (time-time[0], current, voltage, soc, T, cap)
