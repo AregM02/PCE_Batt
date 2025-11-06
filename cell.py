@@ -36,7 +36,7 @@ class Cell:
         else: 
             temperature_mean, temperature_sigma = temperature, np.zeros_like(temperature)
 
-        voltage_mean, voltage_sigma = self.model.solve(current, time, soc_mean, temperature)
+        voltage_mean, voltage_sigma = self.model.solve(current, time, [soc_mean, soc_sigma], temperature)
 
         self.voltage.mean, self.voltage.std = voltage_mean, voltage_sigma
         self.temperature.mean, self.temperature.std = temperature_mean, temperature_sigma

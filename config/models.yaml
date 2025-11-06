@@ -4,10 +4,10 @@ submodels:
     kwargs:
       with_correlations: true
       logger_level: DEBUG
-  - class: qOCV_POLY
+  - class: qOCV_PCE
     module: models.submodels.ocv
     kwargs:
-      order: 12
+      order: 6
       logger_level: DEBUG
       alpha: 0.5
   - class: Plett_Hysteresis

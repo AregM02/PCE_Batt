@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -6,6 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
+import chaospy
 from utils import create_logger
 from ..base import Model
 
@@ -24,16 +26,20 @@ class OCV(Model):
         pass
 
 
-class qOCV_POLY(Model):
+class qOCV_POLY(OCV):
     """
     Simulates a polynomial relationship between qOCV and SOC. Looks for qOCV data at <data/measurements/qocv20>
     
     """
 
-    def __init__(self, order: int = 12, alpha: int = 0.5, logger_level: str = 'DEBUG') -> None:
+    def __init__(self, order: int = 6, alpha: int = 0.5, logger_level: str = 'DEBUG', logger_name=None) -> None:
         super().__init__()
         
-        self.logger = create_logger(__class__.__name__, logger_level)
+        if logger_name is None:
+            self.logger = create_logger(__class__.__name__, logger_level)
+        else: 
+            self.logger = create_logger(logger_name, logger_level)
+
         self.functions = defaultdict(list)
         self.temperatures = np.array([15, 25, 35, 45])
         self.alpha = alpha # 0.5 = charge/discharge OCVs are averaged; 1 = only charge; 0 = only discharge
@@ -47,7 +53,7 @@ class qOCV_POLY(Model):
             
             self.functions[temp] = [poly_c, poly_d]
 
-        self.logger.info("[qOCV_POLY] Initialized!")
+        self.logger.info(f"[{self.logger.name}] Initialized!")
 
 
     def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
@@ -57,7 +63,7 @@ class qOCV_POLY(Model):
             **kwargs : dict of np.ndarray
                 Input arrays. Keys: 'soc', 'T'.
         """
-        soc = kwargs['soc']
+        soc = kwargs['soc'][0]
         T = kwargs['T']
 
         # calculate OCV curves for all defined temperatures
@@ -88,7 +94,7 @@ class qOCV_POLY(Model):
         return ocv_interp, np.zeros_like(ocv_interp)
 
 
-class Plett_Hysteresis(Model):
+class Plett_Hysteresis(OCV):
     """
     Simulates hysteresis effects with the help of a one-state decay model. 
     Credit: G.L.Plett "Battery Management Systems Vol. 1, Battery Modeling" 
@@ -145,6 +151,89 @@ class Plett_Hysteresis(Model):
         voltage = voltage.flatten() 
         
         return voltage, np.zeros_like(voltage)
-            
+    
 
+class qOCV_PCE(qOCV_POLY):
+    """
+    A polynomial chaos expanded variant of qOCV_POLY. Looks for qOCV data at <data/measurements/qocv20>
+    
+    """
+
+
+    def __init__(self, order: int = 6, alpha: int = 0.5, logger_level: str = 'DEBUG') -> None:
+        super().__init__(order=order, alpha=alpha, logger_level=logger_level, logger_name=__class__.__name__)
+        
+        # ----- Set up the A matrix -----
+        H, norms = chaospy.expansion.hermite(order, retall=True)
+        H = H/norms
+
+        A = np.zeros((order+1, order+1))
+        for n, Hn in enumerate(H):
+            coeffs, exponents = Hn.coefficients, Hn.exponents.flatten()
+            A[exponents, n] = coeffs
+
+        # check matrix conditioning
+        cond = np.linalg.cond(A)
+        if cond > 1e12:
+            # warn; use pseudo-inverse for stability
+            self.A_inv = np.linalg.pinv(A)
+            self.logger.warning("Warning: A is ill-conditioned (cond={cond:.3e}), using pinv")
+        else:
+            self.A_inv = np.linalg.inv(A)
+        
+
+
+    def get_beta(self, alpha:np.ndarray, mu_t: np.ndarray, sigma_t:np.ndarray) -> np.ndarray:
+        """
+        alpha: array shape (N+1,) with alpha[n] for x^n (ascending)
+        mu_t, sigma_t: arrays shape (T,)
+        returns beta: ndarray shape (N+1, T) with beta[k,t]
+        """
+        alpha = np.asarray(alpha, dtype=float)
+        mu_t = np.asarray(mu_t, dtype=float)
+        sigma_t = np.asarray(sigma_t, dtype=float)
+        N = alpha.size - 1
+        T = mu_t.size
+        assert mu_t.shape == sigma_t.shape
+
+        # precompute binomial coefficients C(n,k) for n,k in [0 ... N]
+        binom = np.zeros((N+1, N+1), dtype=float)
+        for n in range(N+1):
+            for k in range(n+1):
+                binom[n, k] = math.comb(n, k)
+
+        beta = np.zeros((N+1, T), dtype=float)
+
+        # loop over k (output power) and n (terms in alpha) - triangular
+        for k in range(N+1):
+            for n in range(k, N+1):
+                # compute for all t: C(n,k) * alpha[n] * mu_t**(n-k) * sigma_t**k
+                # use broadcasting to form a (T,) vector
+                term = binom[n, k] * alpha[n] * (mu_t ** (n - k)) * (sigma_t ** k)
+                beta[k, :] += term
+
+        return beta
+
+
+    def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
+        """
+        Parameters
+        ----------
+            **kwargs : dict of np.ndarray
+                Input arrays. Keys: 'soc', 'T'
+        """
+
+        mu_soc, sigma_soc = kwargs['soc']
+        temp = kwargs['T']
+
+        _ix = np.argmin(np.abs(self.temperatures-temp.mean())) # pick closest from availabe temperatures
+        T = self.temperatures[_ix]
+        coeff_c = np.flip(self.functions[T][0].coeffs)
+        coeffs_d = np.flip(self.functions[T][1].coeffs)
+        alpha = self.alpha*coeff_c + (1-self.alpha)*coeffs_d
+
+        beta = self.get_beta(alpha, mu_soc, sigma_soc)
+        gamma = self.A_inv@beta
+
+        return gamma[0, :], np.sqrt(np.sum(gamma[1:, :]**2, axis= 0))
 

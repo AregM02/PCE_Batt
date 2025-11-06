@@ -36,7 +36,7 @@ class CoulombCounterGalerkin():
         self.logger.info(f"[{__class__.__name__}] Initialized!")
 
 
-    def __call__(self, current: np.array, time: np.array) -> np.ndarray:
+    def __call__(self, current: np.array, time: np.array) -> Iterable[np.ndarray, np.ndarray]:
 
         current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
 

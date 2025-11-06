@@ -9,8 +9,8 @@ cell.solve(current=current, time=time, temperature=T)
 
 # Plot the solution
 fig, ax = plt.subplots()
-ax.plot(time, soc, label='Measurement', c='b')
-add_trace(ax, time, cell.soc.mean, cell.soc.std, name='soc', c='r')
+ax.plot(time, voltage, label='Measurement', c='b')
+add_trace(ax, time, cell.voltage.mean, cell.voltage.std, name='voltage', c='r')
 fig.legend()
 ax.set_xlabel('t/[s]')
 plt.show()

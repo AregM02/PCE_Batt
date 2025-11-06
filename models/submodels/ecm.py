@@ -106,7 +106,7 @@ class GalerkinPCE(ECM):
             self.e_nu_phi3 = chaospy.E(nu3 * phi, joint)  # for rho2
             self.e_nu_phi4 = chaospy.E(nu4 * phi, joint)  # b_sigma2
 
-            self.logger.info('[GalerkinPCE] Initialized!')
+            self.logger.info(f'[{__class__.__name__}] Initialized!')
 
     def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
         """
@@ -118,7 +118,7 @@ class GalerkinPCE(ECM):
         
         current = kwargs['current']
         time = kwargs['time'] 
-        soc = kwargs['soc']
+        soc = kwargs['soc'][0] # TODO: implement soc_sigma handling
         T = kwargs['T']
 
         self.logger.info('[GalerkinPCE] Starting solver...')
@@ -129,6 +129,7 @@ class GalerkinPCE(ECM):
         T_ip = interp1d(time, T, kind='linear', bounds_error=False, fill_value=(T[0], T[-1]))
 
         total_duration = time[-1]-time[0]
+
         # Right-hand-side for the system of differential equations
         def rhs(t:float, x:np.ndarray) -> np.ndarray:
             print_progress(t, time[0], total_duration) # show progress
@@ -198,7 +199,7 @@ class GalerkinPCE(ECM):
 
         sys.stdout.write('\n')
         sys.stdout.flush()
-        self.logger.info('[GalerkinPCE] Finished solving!')
+        self.logger.info(f'[{__class__.__name__}] Finished solving!')
 
         return mean, sigma
 
@@ -224,7 +225,7 @@ class nRC(ECM):
 
         current = kwargs['current']
         time = kwargs['time'] 
-        soc = kwargs['soc']
+        soc = kwargs['soc'][0] # TODO: implement soc_sigma handling
         T = kwargs['T']
 
         self.logger.info(f'[{__class__.__name__}] Starting solver...')
