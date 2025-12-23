@@ -1,14 +1,20 @@
+import matplotlib.pyplot as plt
 import sys
 import chaospy
 import numpy as np
+import pandas as pd
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 from scipy.linalg import block_diag
 from collections.abc import Iterable
 from abc import abstractmethod
+from pathlib import Path
+
+from xarray import corr
 from utils import create_logger, print_progress
 from ..base import Model
 from gaussian_process.interpolators import BatteryParameterInterpolator
+from gaussian_process.legacy.interpolators import BatteryParameterInterpolator_Legacy
 
 
 class ECM(Model):
@@ -76,8 +82,8 @@ class GalerkinPCE(ECM):
             self._initialized = True  # Flag to block re-init
             self.with_correlations = with_correlations
             self.logger = create_logger(__class__.__name__, logger_level)
-            self.max_solver_step = 20. # set appropriate step size (20 is fine usually)
-            self.interpolator = BatteryParameterInterpolator()  # interpolator for ECM parameters
+            self.max_solver_step = 2000. # set appropriate step size
+            self.interpolator = BatteryParameterInterpolator_Legacy()  # interpolator for ECM parameters
             self.validate_interpolator(required_vars) # are all necessary variables available?
 
             # ~~~~ GALERKIN PCE ~~~~~
@@ -118,10 +124,10 @@ class GalerkinPCE(ECM):
         
         current = kwargs['current']
         time = kwargs['time'] 
-        soc = kwargs['soc'][0] # TODO: implement soc_sigma handling
+        soc = kwargs['soc'][0]
         T = kwargs['T']
 
-        self.logger.info('[GalerkinPCE] Starting solver...')
+        self.logger.info(f'[{__class__.__name__}] Starting solver...')
 
         # Set up interpolators for input arrays; required for the solver
         current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
@@ -140,7 +146,7 @@ class GalerkinPCE(ECM):
             T_t = T_ip(t)
 
             # Load and parse interpolated parameters
-            params_t = self.interpolator.get_interpolated_params(soc_t, T_t)
+            params_t = self.interpolator.get_interpolated_params(T_t, soc_t)
             (
              mu_tau1_inv, sigma_tau1_inv, 
              mu_c1_inv, sigma_c1_inv, 
@@ -178,7 +184,7 @@ class GalerkinPCE(ECM):
                                 t_span=(time[0], time[-1]), t_eval=time
                                 ).y.T
         
-        
+
         coefficients1, coefficients2 = (
                                         coefficients[:, :len(self.expansion)], 
                                         coefficients[:, len(self.expansion):]
@@ -188,9 +194,9 @@ class GalerkinPCE(ECM):
         mu_r0 =self.interpolator.interpolators[0]
         sigma_r0 = self.interpolator.interpolators[1]
         vb_approx = (
-                    (mu_r0(T, soc) + self.nu0 * sigma_r0(T, soc)) * current + 
-                    chaospy.sum(self.expansion * coefficients1, -1) +
-                    chaospy.sum(self.expansion * coefficients2, -1)
+                    (mu_r0(T, soc) + self.nu0 * sigma_r0(T, soc)) * current  
+                    + chaospy.sum(self.expansion * coefficients1, -1) 
+                    + chaospy.sum(self.expansion * coefficients2, -1)
                     )
 
         mean = chaospy.E(vb_approx, self.joint)
@@ -225,7 +231,7 @@ class nRC(ECM):
 
         current = kwargs['current']
         time = kwargs['time'] 
-        soc = kwargs['soc'][0] # TODO: implement soc_sigma handling
+        soc = kwargs['soc'][0]
         T = kwargs['T']
 
         self.logger.info(f'[{__class__.__name__}] Starting solver...')
@@ -263,3 +269,216 @@ class nRC(ECM):
         voltage = voltage.flatten() 
         
         return voltage, np.zeros_like(voltage)
+    
+
+class Extended_Galerkin_Legacy(ECM):
+    """Extended variation of the Galerkin PCE ECM which treats SoC as a Gaussian process."""
+
+    data_path = Path(__file__).parent.parent.parent / 'data' / 'distributions' / '25deg.parquet'
+    data = pd.read_parquet(data_path)
+    data.index = data.index /100
+    data = data[['mu_R0', 'sigma_R0']]
+
+
+    def __init__(self, logger_level: str = 'DEBUG'):
+        self.logger = create_logger(__class__.__name__, logger_level)
+        self.max_solver_step = 20.
+
+        self.logger.info(f"[{__class__.__name__}] Initialized!")
+
+
+    def solve(self, **kwargs):
+        current = kwargs['current']
+        time = kwargs['time'] 
+        mu_z, sigma_z = kwargs['soc']
+        T = kwargs['T']
+
+
+        mu_vb = np.array([])
+        sigma_vb = np.array([])
+        for i, z in enumerate(mu_z):
+            coeffs = self.get_linear_factors(self.data, z)
+
+            a = coeffs.loc['mu_R0'].slope
+            b = coeffs.loc['mu_R0'].intercept
+            c = coeffs.loc['sigma_R0'].slope
+            d = coeffs.loc['sigma_R0'].intercept
+
+            mean = a*z + b
+            sigma = np.sqrt((a*sigma_z[i])**2 + (c*z + d)**2 + (c*sigma_z[i])**2)
+
+            # print(a*z + b)
+            # print((a*sigma_z[i])**2)
+            # print((c*z + d)**2)
+            # print((c*sigma_z[i])**2)
+
+            # quit()
+
+            mu_vb = np.append(mu_vb, mean)
+            sigma_vb = np.append(sigma_vb, sigma)
+
+
+        return mu_vb*current, sigma_vb*current
+
+
+
+    def get_linear_factors(self, df, soc):
+        iloc_ix = df.index.searchsorted(soc)
+        df = df.iloc[iloc_ix-1: iloc_ix+1]
+
+        coeffs = df.apply(lambda col: np.polyfit(df.index, col, 1))
+        coeffs.index = ['slope', 'intercept']
+        coeffs = coeffs.T 
+
+        return coeffs
+    
+
+class GalerkinPCE(ECM):
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, logger_level: str = 'DEBUG'):
+        if not hasattr(self, '_initialized'):
+
+            required_vars = [
+                'mu_R0', 'sigma_R0',
+                'mu_tau1_inv', 'sigma_tau1_inv', 
+                'mu_c1_inv', 'sigma_c1_inv', 
+                'mu_tau2_inv', 'sigma_tau2_inv',
+                'mu_c2_inv', 'sigma_c2_inv', 
+                'CORR',
+            ]
+
+            super().__init__()
+            self._initialized = True  # Flag to block re-init
+            self.logger = create_logger(__class__.__name__, logger_level)
+            self.max_solver_step = 1000.
+            self.interpolator = BatteryParameterInterpolator() 
+            self.validate_interpolator(required_vars)
+
+            # ~~~~ GALERKIN PCE ~~~~~
+            # create the joint distribution, basis and parameter variables
+            joint = chaospy.J(chaospy.Normal(), chaospy.Normal(), chaospy.Normal(),
+                              chaospy.Normal(), chaospy.Normal())
+            self.joint = joint
+
+            Phi = chaospy.generate_expansion(3, joint, normed=True)
+            self.Phi = Phi
+
+            nu = chaospy.variable(5)
+            self.E_Phi = np.array([chaospy.E(Phi, joint)]+[chaospy.E(nu[i]*Phi, joint) for i in range(5)]) # shape = (6, basis_size)
+            self.T_Phi = np.array([chaospy.E(chaospy.outer(Phi, Phi), joint)]+
+                         [chaospy.E(nu[i]*chaospy.outer(Phi, Phi), joint) for i in range(5)]) # shape = (6, basis_size, basis_size)
+            self.nu_r = nu[0] # for R0
+
+            self.logger.info(f'[{__class__.__name__}] Initialized!')
+
+
+    def compile_statistical_matrix(self, T: float, soc: float)-> np.ndarray:
+        params_t = self.interpolator.get_interpolated_params(T, soc)
+        (
+        _, sigma_r0,
+        mu_tau1_inv, sigma_tau1_inv, 
+        mu_c1_inv, sigma_c1_inv, 
+        mu_tau2_inv, sigma_tau2_inv, 
+        mu_c2_inv, sigma_c2_inv,
+        corr_mat
+        ) = (
+        params_t['mu_R0'], params_t['sigma_R0'],
+        params_t['mu_tau1_inv'], params_t['sigma_tau1_inv'],
+        params_t['mu_c1_inv'], params_t['sigma_c1_inv'],
+        params_t['mu_tau2_inv'], params_t['sigma_tau2_inv'],
+        params_t['mu_c2_inv'], params_t['sigma_c2_inv'],
+        params_t['CORR']
+        )
+
+        Mu = np.asarray([0, mu_tau1_inv, mu_c1_inv, mu_tau2_inv, mu_c2_inv])
+        sigma_diag = np.diag(np.asarray([sigma_r0, sigma_tau1_inv, sigma_c1_inv, sigma_tau2_inv, sigma_c2_inv])) # no correlations for now
+        corr_mat = (corr_mat + corr_mat.T)/2  # ensure symmetry
+        SIGMA = sigma_diag @ corr_mat @ sigma_diag
+        try:
+            L = np.linalg.cholesky(SIGMA)  # shape = (5, 5)
+        except:
+            L = sigma_diag # fallback to no correlations if not positive definite
+            
+        return np.hstack([Mu[:, None], L]) # shape = (5, 6) [Mu, SIGMA]
+
+
+    def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
+        """
+        Parameters
+        ----------
+            **kwargs : dict of np.ndarray
+                Input arrays. Keys: 'current', 'time', 'soc', 'T'.
+        """
+        
+        current = kwargs['current']
+        time = kwargs['time'] 
+        soc = kwargs['soc'][0]
+        T = kwargs['T']
+
+        self.logger.info(f'[{__class__.__name__}] Starting solver...')
+
+        # Set up interpolators for input arrays; required for the solver
+        current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
+        soc_ip = interp1d(time, soc, kind='linear', bounds_error=False, fill_value=(soc[0], soc[-1]))
+        T_ip = interp1d(time, T, kind='linear', bounds_error=False, fill_value=(T[0], T[-1]))
+
+        total_duration = time[-1]-time[0]
+
+        # Right-hand-side for the system of differential equations
+        def rhs(t:float, x:np.ndarray) -> np.ndarray:
+            print_progress(t, time[0], total_duration) # show progress
+
+            # Get interpolated soc, current and temperature
+            soc_t = soc_ip(t)
+            current_t = current_ip(t)
+            T_t = T_ip(t)
+
+            # Load the statistical matrix
+            stat_matrix = self.compile_statistical_matrix(T_t, soc_t) # shape = (5, 6)
+
+            T_all = np.tensordot(stat_matrix, self.T_Phi, axes=([1],[0])) # shape = (5, basis_size, basis_size)
+            C_all = np.tensordot(stat_matrix, self.E_Phi, axes=([1],[0])) # shape = (5, basis_size)
+
+            H = block_diag(T_all[1], T_all[3]) # shape = (2*basis_size, 2*basis_size)
+            b = np.concatenate([C_all[2], C_all[4]]) # shape = (2*basis_size,)
+
+            return -np.sum(x * H, -1) + current_t * b
+        
+
+        coefficients = solve_ivp(
+                                fun=rhs, max_step=self.max_solver_step, y0=np.zeros(2 * len(self.Phi)),
+                                t_span=(time[0], time[-1]), t_eval=time
+                                ).y.T
+        
+
+        coefficients1, coefficients2 = (
+                                        coefficients[:, :len(self.Phi)], 
+                                        coefficients[:, len(self.Phi):]
+                                        )
+
+        # Get the interpolator for R0 separately
+        params = self.interpolator.get_interpolated_params(T, soc)
+        mu_r0 = params['mu_R0']
+        sigma_r0 = params['sigma_R0']
+
+        vb_approx = (
+                    (mu_r0 + self.nu_r * sigma_r0) * current  
+                    + chaospy.sum(self.Phi * coefficients1, -1) 
+                    + chaospy.sum(self.Phi * coefficients2, -1)
+                    )
+
+        mean = chaospy.E(vb_approx, self.joint)
+        variance = np.abs(chaospy.Var(vb_approx, self.joint))
+        sigma = np.sqrt(variance)
+
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+        self.logger.info(f'[{__class__.__name__}] Finished solving!')
+
+        return mean, sigma

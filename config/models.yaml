@@ -2,16 +2,16 @@ submodels:
   - class: GalerkinPCE
     module: models.submodels.ecm
     kwargs:
-      with_correlations: true
       logger_level: DEBUG
   - class: qOCV_PCE
     module: models.submodels.ocv
     kwargs:
-      order: 6
+      order: 12
       logger_level: DEBUG
       alpha: 0.5
   - class: Plett_Hysteresis
     module: models.submodels.ocv
     kwargs:
       logger_level: DEBUG
-      g: 0.0001
+      g: 0.002
+

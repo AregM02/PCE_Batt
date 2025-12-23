@@ -32,7 +32,7 @@ def filter_MAD(arr: np.array, ret_index=False, thresh=5)->Iterable[np.array, np.
         return new_arr
 
 
-def sync_filter(df: pd.DataFrame, cols: Iterable[str])->None:
+def sync_filter(df: pd.DataFrame, cols: Iterable[str], thresh: float = 5)->None:
     """Applies synced MAD filtering along passed columns. 
        Useful if you need to caculate correlations, as separate column-by-column
        filtering would mess with the array order."""
@@ -40,7 +40,7 @@ def sync_filter(df: pd.DataFrame, cols: Iterable[str])->None:
     for row in df.index:
         idx_total = np.empty(0, dtype=int)
         for col in cols:
-            _, ix = filter_MAD(df.at[row, col], ret_index=True)
+            _, ix = filter_MAD(df.at[row, col], ret_index=True, thresh=thresh)
             idx_total = np.append(idx_total, ix)
         for col in cols:
             df.at[row, col] = np.delete(df.at[row, col], idx_total)
@@ -82,6 +82,38 @@ def snap_to_grid(df:pd.DataFrame, column_name:str, lower=0, upper=101, step=5, r
     return df.assign(**{column_name: snapped_values})
 
 
+def corr_matrix(data: pd.DataFrame, temp, averaged: bool = True, visualize: bool = False) -> pd.DataFrame:
+    """
+    Returns a correlation matrix for each SoC (averaged over SoC by default). 
+    Expected input is the output of compile_data i.e. a dataframe of arrays with SoC as index.
+    """
+    def row_corr(row):
+        # stack arrays into 2D: shape (num_arrays, array_length)
+        stacked = np.vstack(row.values)
+        return np.corrcoef(stacked)
+
+    if averaged:
+        mean_corr = data.apply(row_corr, axis=1).mean()  # shape: (D, D)
+        correlations = pd.Series([mean_corr for _ in range(len(data))], index=data.index)
+    else:
+        correlations = data.apply(row_corr, axis=1)
+
+    if visualize:
+        vars = data.columns
+        plt.matshow(np.abs(correlations), fignum=1, cmap='coolwarm', vmin=0, vmax=1)
+
+        plt.xticks(range(len(vars)), vars)
+        plt.yticks(range(len(vars)), vars)
+
+        for i in range(len(vars)):
+            for j in range(len(vars)):
+                plt.text(j, i, f"{correlations[i,j]:.3f}", ha='center', va='center', color='black')
+        plt.title(f'T = {temp} Correlation Matrix')
+        plt.show()
+
+    return correlations
+
+
 def compile_data(temp:int)->pd.DataFrame:
     "Returns a combined dataframe, where each entry holds a list of parameter values from all batteries"
 
@@ -89,6 +121,7 @@ def compile_data(temp:int)->pd.DataFrame:
         raise ValueError("Temperature must be one of: 15, 25, 35, 45")
     
     param_path = (Path(__file__).parent.parent / "data"/ "parametrization" / f"{temp}deg").resolve() # full path
+
     try: 
         pd.read_parquet(next(param_path.rglob('*.parquet')))
     except:
@@ -127,6 +160,9 @@ def main():
     for temp in [15, 25, 35, 45]:
         # load data
         data = compile_data(temp)
+        
+        if 0 in data.index:
+            data = data.drop(0)  # drop 0% SoC if present
 
         data = data[['R0', 'R1', 'tau1', 'R2', 'tau2', 'T']]
 
@@ -137,10 +173,16 @@ def main():
                                     'R2':'c2_inv', 'tau2':'tau2_inv'})
         
         # clean outliers
-        data['R0'] = data['R0'].apply(filter_MAD)
-        sync_filter(data, ['c1_inv', 'tau1_inv'])
-        sync_filter(data, ['c2_inv', 'tau2_inv'])
-        
+        # data['R0'] = data['R0'].apply(filter_MAD)
+        # sync_filter(data, ['c1_inv', 'tau1_inv'])
+        # sync_filter(data, ['c2_inv', 'tau2_inv'])
+
+        # ---- Get Correlation Matrix at each SoC (if needed) ------
+        vars = ['R0', 'c1_inv', 'tau1_inv', 'c2_inv', 'tau2_inv']
+        sync_filter(data, vars)
+        mat = corr_matrix(data[vars], temp = temp, visualize=False, averaged=True)
+        # ----------------------------------------------------------
+
         # fit distributions
         data_fit = data.map(fit_dist)
 
@@ -151,19 +193,21 @@ def main():
         data_sigma.columns = [f"sigma_{col}" for col in data_fit.columns]
         out = pd.concat([data_mean, data_sigma], axis=1)
 
-        # calculate and add correlations to the output file
-        rho1 = data.apply(lambda row: np.corrcoef(row['tau1_inv'], row['c1_inv'])[0, 1], axis=1)
-        rho2 = data.apply(lambda row: np.corrcoef(row['tau2_inv'], row['c2_inv'])[0, 1], axis=1)
-        out['rho1'], out['rho2'] = rho1, rho2
+        # # calculate and add correlations to the output file
+        # rho1 = data.apply(lambda row: np.corrcoef(row['tau1_inv'], row['c1_inv'])[0, 1], axis=1)
+        # rho2 = data.apply(lambda row: np.corrcoef(row['tau2_inv'], row['c2_inv'])[0, 1], axis=1)
+        
+        # out['rho1'], out['rho2'] = rho1, rho2
+        out = out.assign(CORR = mat.apply(lambda s: s.flatten())) # flatten since pyarrow doesn't support 2D arrays
 
-        # dump to file
-        save_path = Path(__file__).parent/'outputs'
-        file_name = f'{temp}deg.parquet'
-        out.to_parquet((save_path/file_name).resolve())
+        # # dump to file
+        # save_path = Path(__file__).parent/'outputs'
+        # file_name = f'{temp}deg.parquet'
+        # out.to_parquet(save_path/file_name)
 
-        # log the creation date and content
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-            logger.info(f' {file_name} created: contains \n {out} \n\n')
+        # # log the creation date and content
+        # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        #     logger.info(f' {file_name} created: contains \n {out} \n\n')
 
 if __name__=="__main__":
     main()

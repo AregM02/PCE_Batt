@@ -1,3 +1,2 @@
-from .ecm import GalerkinPCE
-from .ocv import qOCV_POLY
-from .ocv import qOCV_PCE
+from .ecm import GalerkinPCE, nRC, Extended_Galerkin_Legacy
+from .ocv import qOCV_POLY, qOCV_PCE

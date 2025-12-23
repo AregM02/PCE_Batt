@@ -1,3 +1,7 @@
+#####################################################################
+# DEPRECATED FILE. MODIFY gaussian_process/interpolators.py INSTEAD.#
+#####################################################################
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -5,10 +9,11 @@ from pathlib import Path
 
 def load_vars(dist: pd.DataFrame)->dict['str', np.array]:
     """
-    Parses data required for gaussian process interpolators. You are free to define your own variable names here, but keep in mind the specific naming scheme requirements for each model. See README.md for details.
+    Parses data required for gaussian interpolators. The interpolators are named according to the variable names used here.
+    You are free to define your own variable names, but keep in mind the specific naming scheme requirements for each model. See README.md for details.
 
     """
-    
+
     return {
             'mu_r0': dist['mu_R0'].to_numpy(),
             'sigma_r0': dist['sigma_R0'].to_numpy(),
@@ -20,11 +25,12 @@ def load_vars(dist: pd.DataFrame)->dict['str', np.array]:
             'sigma_tau2_inv': dist['sigma_tau2_inv'].to_numpy(),
             'mu_c2_inv': dist['mu_c2_inv'].to_numpy(),
             'sigma_c2_inv': dist['sigma_c2_inv'].to_numpy(),
-            'SOC': dist.index.to_numpy() / 100., # mandatory
-            'T': int(round(dist['mu_T'].mean())), # mandatory
             'rho1': dist['rho1'].to_numpy(),
             'rho2': dist['rho2'].to_numpy(),
+            'SOC': dist.index.to_numpy() / 100., # mandatory
+            'T': int(round(dist['mu_T'].mean())), # mandatory
             }
+
 
 
 # tesing
