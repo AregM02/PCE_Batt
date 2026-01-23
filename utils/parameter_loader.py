@@ -1,6 +1,6 @@
-#####################################################################
-# DEPRECATED FILE. MODIFY gaussian_process/interpolators.py INSTEAD.#
-#####################################################################
+###############################################################
+# DEPRECATED: PASS YOUR DESIRED NAMES config/cfg/yaml INSTEAD.#
+###############################################################
 
 import pandas as pd
 import numpy as np

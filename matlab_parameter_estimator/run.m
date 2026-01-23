@@ -1,13 +1,13 @@
 % PROGRAM START
 % Extracts RC params from each SOC range for an entire test profile
 % Writes this data in a variable named 'results' and saves it as a .parquet
-filePath = 'data/25grad_300';
-savePath = 'parametrization/15grad';
+filePath = "C:\Users\aregm\Desktop\apr_parquets_new\35deg";
+savePath = "C:\Users\aregm\Desktop\apr_params\35deg";
 files = dir(fullfile(filePath, '*.parquet'));
 N_files = length(files);
-check = true;
+check = false;
 
-for i = 1:N_files
+for i = 24:N_files
     disp(['Processing file Nr.', num2str(i)])
     fpath = fullfile(filePath, files(i).name);
     initdata;
@@ -96,7 +96,7 @@ for i = 1:N_files
     clear ix_p;
     
     parquetwrite(fullfile(savePath,files(i).name), results)
-    clearvars -except relativePath files N_files savePath check;
+    clearvars -except relativePath files N_files savePath filePath check;
     
 end
 

@@ -5,12 +5,21 @@ from scipy.interpolate import RegularGridInterpolator
 import logging
 from typing import Dict
 import matplotlib.pyplot as plt
+import yaml
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler()
 logger.addHandler(console_handler)
+
+config_dir = Path(__file__).parent.parent / 'config' / 'cfg.yaml'
+with open(config_dir, 'r') as f:
+    config = yaml.safe_load(f)
+    DIST_FOLDER = Path(config['simulation']['paths']['parameters']['dist_folder'])
+    NAME_PATTERN = config['simulation']['paths']['parameters']['file_naming_scheme']
+    TEMPS = list(config['simulation']['temperatures']) #just to make sure its a list
+    PARAM_NAMES = list(config['simulation']['paths']['parameters']['param_labels'])
 
 
 # ---------- MultiIndex BatteryParameterInterpolator ----------
@@ -25,14 +34,14 @@ class BatteryParameterInterpolator:
 
     """
 
-    def __init__(self, temps=(15, 25, 35, 45), data_dir: Path = None):
+    def __init__(self, temps=TEMPS, data_dir: Path = DIST_FOLDER,
+                 pattern: str = NAME_PATTERN, scalar_names: list = PARAM_NAMES):
         self.temps = temps
-        self.data_dir = data_dir or Path(__file__).parent.parent / "data" / "distributions"
+        self.data_dir = data_dir
+        self.pattern = pattern
 
         # Define scalar parameter names (change as needed)
-        self.scalar_names = ['mu_R0', 'sigma_R0', 'mu_tau1_inv', 'sigma_tau1_inv',
-                             'mu_c1_inv', 'sigma_c1_inv', 'mu_tau2_inv', 'sigma_tau2_inv',
-                             'mu_c2_inv', 'sigma_c2_inv']
+        self.scalar_names = scalar_names
         self.scalar_interpolator = None
         self.corr_interpolator = None
         self.D = None
@@ -47,7 +56,7 @@ class BatteryParameterInterpolator:
         """Load parquet files, merge into a MultiIndex DataFrame, flatten CORR matrices."""
         dfs = []
         for temp in self.temps:
-            file_path = self.data_dir / f"{temp}deg.parquet"
+            file_path = self.data_dir / self.pattern.format(temp=temp)
             if not file_path.exists():
                 raise FileNotFoundError(f"{file_path} not found.")
             df = pd.read_parquet(file_path)
@@ -62,12 +71,15 @@ class BatteryParameterInterpolator:
         self.df_all.sort_index(inplace=True)
 
         # Flatten CORR matrices for interpolation
-        self.D = int(self.df_all['CORR'].iloc[0].shape[0] ** 0.5)
+        if isinstance(self.df_all['CORR'].iloc[0], list):
+            self.D = int(len(self.df_all['CORR'].iloc[0])**0.5)
+        else: 
+            self.D = int(self.df_all['CORR'].iloc[0].shape[0] ** 0.5)
         
         # Prepare scalar array and CORR array for grid
         self.scalar_array = self.df_all[self.scalar_names].to_numpy() # shape: (num_points, num_scalars)
         self.corr_array = np.stack(self.df_all['CORR'].to_numpy(), axis=0) # shape: (num_points, D*D)
-
+        
         # Extract unique grid values
         self.T_unique = np.sort(self.df_all.index.get_level_values('T').unique())
         self.SOC_unique = np.sort(self.df_all.index.get_level_values('SOC').unique())
@@ -121,7 +133,10 @@ class BatteryParameterInterpolator:
             result = {k: (v[0] if k != 'CORR' else v[0, :, :]) for k, v in result.items()}
 
         return result
+    
 
+    def test_sample(self):
+        return self.get_interpolated_params(0, 0)
 
 
 if __name__ == "__main__":

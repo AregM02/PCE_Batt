@@ -9,8 +9,6 @@ from scipy.linalg import block_diag
 from collections.abc import Iterable
 from abc import abstractmethod
 from pathlib import Path
-
-from xarray import corr
 from utils import create_logger, print_progress
 from ..base import Model
 from gaussian_process.interpolators import BatteryParameterInterpolator
@@ -52,7 +50,7 @@ class ECM(Model):
         pass
 
 
-class GalerkinPCE(ECM):
+class GalerkinPCE_Legacy(ECM):
     """
     Implements system matrices and a solver method for the 2RC Galerkin PCE.
     Immutable singleton model object for the cell class. Initializes only one GalerkinPCModel object to save up on memory; any subsequent call to the constructor returns a reference to this one object.
@@ -356,7 +354,7 @@ class GalerkinPCE(ECM):
             super().__init__()
             self._initialized = True  # Flag to block re-init
             self.logger = create_logger(__class__.__name__, logger_level)
-            self.max_solver_step = 1000.
+            self.max_solver_step = 1.
             self.interpolator = BatteryParameterInterpolator() 
             self.validate_interpolator(required_vars)
 

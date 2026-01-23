@@ -1,0 +1,34 @@
+models:
+  # # ECM
+  # - class: GalerkinPCE
+  #   module: models.submodels.ecm
+  #   kwargs:
+  #     logger_level: DEBUG
+  # OCV
+  - class: qOCV_Differential
+    module: models.submodels.ocv
+    kwargs:
+      # order: 12
+      logger_level: DEBUG
+      alpha: 0.5
+  # HYSTERESIS
+  - class: Plett_Hysteresis
+    module: models.submodels.ocv
+    kwargs:
+      logger_level: DEBUG
+      g: 0.005
+
+
+simulation:
+  temperatures: [15, 25, 35, 45]
+
+  paths: # please use absolute paths
+    parameters:
+      dist_folder: "C:/Users/aregm/Desktop/probabilistic-modelling-for-batteries/data/distributions"
+      file_naming_scheme: "{temp}deg.parquet" # interpolators replace {temp} with temperatures and load files with the resulting names
+      param_labels: ['mu_R0', 'sigma_R0', 'mu_tau1_inv', 'sigma_tau1_inv',
+                    'mu_c1_inv', 'sigma_c1_inv', 'mu_tau2_inv', 'sigma_tau2_inv',
+                    'mu_c2_inv', 'sigma_c2_inv'] # parameter names to read in from distribution files
+
+    validation:
+      validation_path: "C:/Users/aregm/Desktop/probabilistic-modelling-for-batteries/data/measurements/validation"

@@ -1,3 +1,4 @@
+import pprint
 import numpy as np
 from collections.abc import Iterable
 import yaml
@@ -6,7 +7,8 @@ from pathlib import Path
 from ..base import Model
 from utils import create_logger
 
-CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'models.yaml'
+
+CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'cfg.yaml'
 
 class BatteryModel(Model):
     """
@@ -29,7 +31,7 @@ class BatteryModel(Model):
         
         # import required submodels and instantiate
         instances = []
-        for m in config["submodels"]:
+        for m in config["models"]:
             mod = importlib.import_module(m["module"])
             cls = getattr(mod, m["class"])
             instances.append(cls(**m.get("kwargs", {})))
@@ -38,6 +40,9 @@ class BatteryModel(Model):
             self.logger.fatal(f"No submodels found! Check for proper configuration at {CONFIG_PATH}")
             raise SystemExit
         self.submodels = instances
+
+        # save as dict for easier access
+        self.submodel_dict = {f'{k.__class__.__name__}' : k for k in self.submodels}
 
 
     def solve(self, current, time, soc, T):
@@ -58,4 +63,10 @@ class BatteryModel(Model):
         combined_std = np.sqrt(combined_var)
 
         return combined_mean, combined_std
-
+    
+    def __str__(self):
+        return pprint.pformat(self.submodel_dict)
+    
+    def get_submodels(self):
+        return self.submodel_dict
+    

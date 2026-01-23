@@ -45,28 +45,35 @@ for k=1:length(rise_edges)
     
     %  ------Fit remaining parameters using the extracted R0------
     width = fall_edges(k) - rise_edges(k); % width of the current pulse
-    ixp = rise_edges(k):(rise_edges(k)+10*width);
+    ixp = rise_edges(k):(rise_edges(k)+10*width); %control fittig window width here
     % ixp = (fall_edges(i)+10):(fall_edges(i)+4*width);
     ixp = intersect(ixp, ix); % prevent out-of-bounds error
 
-    
     % GENERATE AND REMOVE OCV
     reconstocv; %returns: vb_temp
     vb_temp = vb-vb_temp;
-    vb_temp2 = vb_temp; 
+    vb_temp2 = vb_temp; %voltage without ocv
 
     % REMOVE R0*I
     ib_cleaned = zeros(size(ib));
     ib_cleaned(ix_jumps(1)+1:ix_jumps(2)) = ib(round((ix_jumps(1)+ix_jumps(2))/2));
-    vb_temp = vb_temp - xrc(1)*ib_cleaned;
+    vb_temp = vb_temp - xrc(1)*ib_cleaned; %voltage without resistance and ocv
     
     % EXPONENTIAL FITTING
     % ====(1) first fit the decay to find tau=RC===========================
-        n=3; % index to skip to (safeguard for edge anomalies)
+    n=3; % index to skip to (safeguard for edge anomalies)
     t_fit = t(ix_jumps(2)+n: ixp(end));
     t_fit = t_fit - t_fit(1);
+
+    weights = 1 ./ (t_fit.^2 + 1); 
+    fo_exp = fitoptions('exp2');
+    fo_exp.Weights = weights;
+
+    fo_exp.Lower = [-Inf, -1.0, -Inf, -0.1]; % Min tau1 = 1s, Min tau2 = 10s
+    fo_exp.Upper = [Inf, -0.001, Inf, -0.009]; % Max tau ~10,000s
+
     v_fit = vb_temp(ix_jumps(2)+n: ixp(end));
-    f = fit(t_fit, v_fit, 'exp2');
+    f = fit(t_fit, v_fit, 'exp2', fo_exp);
     tau1 = -1/f.b;
     tau2 = -1/f.d;
     % %----Test Plot----
@@ -93,7 +100,7 @@ for k=1:length(rise_edges)
     %======================================================================
 
     % ==== (2) when current is nonzero: R = V/I*(1-exp(1-exp(-t/tau)))=====
-    n = 0;
+    n = 1;
     t_fit = t(ix_jumps(1)+n: ix_jumps(2)-n);
     t_fit = t_fit-t_fit(1);
     v_fit = vb_temp(ix_jumps(1)+n: ix_jumps(2)-n);
@@ -105,7 +112,7 @@ for k=1:length(rise_edges)
     ft = fittype('I*R1*(1-exp(-t/tau1)) + I*R2*(1-exp(-t/tau2))', ...
              'independent', 't', 'problem', {'tau1', 'tau2', 'I'});
     fo = fitoptions('Method', 'NonlinearLeastSquares', ...
-                'Lower', [0., 0.], 'StartPoint', [1., 1.]);
+                'Lower', [0.005, 0.005], 'Upper', [1., 1.], 'StartPoint', [0.5, 0.5]);
     f = fit(t_fit, v_fit-v_fit(1), ft, fo, 'problem', {tau1, tau2, I});
     % errors
     cb = confint(f);
@@ -125,18 +132,7 @@ for k=1:length(rise_edges)
     % %----------
     %======================================================================
 
-    % ==== R0 CORRECTION (r0+=(v-v_model)/I) ==============================
-    % ix_temp = ix_jumps(1)+20:ix_jumps(2)-20;
-    % % hold off; plot(vb_temp2(ix));
-    % % hold on; plot(ecmfunc(ib(ix_temp), dt(ix_temp), xrc, 0.));
-    % % return
-    % f_obj = @(x)(sum((vb_temp2(ix_temp) - ecmfunc(ib(ix_temp), dt(ix_temp), [x, xrc(2:end)], 0.) ).^2));
-    % x0 = xrc(1);
-    % [x0, ~] = fminsearch(f_obj,x0);
-    % xrc(1) = x0(1);
-    % delta_R0 = 0;
-
-        n=5;
+    n=5;
     t_fit = t(ix_jumps(1)+n: ix_jumps(2)-1) - t(ix_jumps(1)+n);
     v_fit = vb(ix_jumps(1)-10) + xrc(1)*I + f.R1*I.*(1-exp(-t_fit/tau1)) + f.R2*I.*(1-exp(-t_fit/tau2));
     dv_r0 = vb(ix_jumps(1)+n: ix_jumps(2)-1) - v_fit;
@@ -173,13 +169,46 @@ clear k dv_r0 dv fall_edges rise_edges width ixp ix_jumps...
     delta_R0 delta_R1 delta_tau1_inv delta_R2 delta_tau2_inv fo ft tau1...
     tau2 delta_C1_inv delta_C2_inv;
 
-if size(xrc)>1
-    xrc = mean(xrc_arr);
+% --- Robust MAD Filtering and Averaging ---
+if size(xrc_arr, 1) > 1
+    % 1. Identify rows that are physically possible (e.g., positive Tau)
+    valid_mask = (xrc_arr(:, 3) > 0) & (xrc_arr(:, 5) > 0);
+    
+    if any(valid_mask)
+        % Extract only the rows that passed the basic physical check
+        clean_data = xrc_arr(valid_mask, :);
+        
+        % 2. Calculate Median and MAD for the columns (specifically Tau1 and Tau2)
+        % Using 3 * MAD is a standard threshold for outlier detection
+        med_val = median(clean_data, 1);
+        abs_dev = abs(clean_data - med_val);
+        mad_val = median(abs_dev, 1);
+        
+        % 3. Create a mask for outliers (rows where deviation > 3 * MAD)
+        % We focus the filter on Tau2 (col 5) as it is your most sensitive parameter
+        threshold = 3;
+        is_outlier = abs_dev(:, 5) > (threshold * mad_val(5));
+        
+        % 4. Compute final mean using only the "good" rows
+        final_rows = clean_data(~is_outlier, :);
+        
+        if ~isempty(final_rows)
+            xrc = mean(final_rows, 1);
+        else
+            % Fallback to median if everyone is an outlier
+            xrc = med_val;
+        end
+    else
+        xrc = zeros(1, 5); % Default if no pulses were successful
+    end
 end
 
 if size(xrc)>1
     errors = mean(errors_arr);
 end
+
+clear valid_mask clean_data med_val mad_val abs_dev threshold is_outlier...
+    final_rows
 
 % calcv; % show result
 

@@ -41,3 +41,9 @@ class Cell:
         self.voltage.mean, self.voltage.std = voltage_mean, voltage_sigma
         self.temperature.mean, self.temperature.std = temperature_mean, temperature_sigma
         self.soc.mean, self.soc.std = soc_mean, soc_sigma
+
+    def get_model_dict(self):
+        return self.model.get_submodels()
+    
+    def __str__(self):
+        return f"Battery Cell Object with Submodels:\n{self.model.__str__()}"

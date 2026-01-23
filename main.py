@@ -1,14 +1,14 @@
 from cell import Cell
 import matplotlib.pyplot as plt
-from utils import load_validation, add_trace, RMSE
+from utils import load_validation, add_trace, RMSE, load_cached, unify_measurements
 
-time, current, measurement, soc, T, C_nom = load_validation()
+time, current, measurement, soc, temperature, C_nom, C_nom_unc = load_validation()
 
-cell = Cell(initial_soc=soc[0], capacity=C_nom, capacity_unc=C_nom*0.002)
-cell.solve(current=current, time=time, temperature=T)
+cell = Cell(initial_soc=soc[0], capacity=C_nom, capacity_unc=C_nom*C_nom_unc)
+cell.solve(current=current, time=time, temperature=temperature)
 
-# # Load cached PCE simulation at 25deg (saves time)
-# cell.voltage.mean, cell.voltage.std = unify_measurements(cell.voltage.mean, cell.voltage.std, *load_cached('vpce_25'))
+# Load cached PCE simulation at 25deg (saves time)
+cell.voltage.mean, cell.voltage.std = unify_measurements(cell.voltage.mean, cell.voltage.std, *load_cached('vpce25'))
 
 # -----PLOTS-----
 fig, ax = plt.subplots(figsize = (24, 16))
@@ -27,7 +27,8 @@ print(f"STD RMSE: {1000*RMSE(cell.voltage.std, measurement[1]):.2f} mV")
 fig, ax = plt.subplots()
 ax.plot(measurement[1], c='b', label='Measured Std.')
 ax.plot(cell.voltage.std, c='r', label='Simulated Std.')
-ax.legend()
+ax.plot()
+# ax.plot(cell.voltage.std/measurement[1], c='black', label='Simulated Std./Measured Std.', linewidth = 0.7)
 ax.grid(True, alpha=0.3)
 # plt.savefig("stds.pdf", dpi=600)
 plt.show()

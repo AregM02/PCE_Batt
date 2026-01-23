@@ -114,13 +114,13 @@ def corr_matrix(data: pd.DataFrame, temp, averaged: bool = True, visualize: bool
     return correlations
 
 
-def compile_data(temp:int)->pd.DataFrame:
+def compile_data(temp:int, path:str)->pd.DataFrame:
     "Returns a combined dataframe, where each entry holds a list of parameter values from all batteries"
 
     if temp not in [15, 25, 35, 45]:
         raise ValueError("Temperature must be one of: 15, 25, 35, 45")
     
-    param_path = (Path(__file__).parent.parent / "data"/ "parametrization" / f"{temp}deg").resolve() # full path
+    param_path = path
 
     try: 
         pd.read_parquet(next(param_path.rglob('*.parquet')))
@@ -138,8 +138,9 @@ def compile_data(temp:int)->pd.DataFrame:
                 df = df.drop(0)
             else:
                 continue
-        if len(df) > 40: # the data in some of the files has been duplicated
-            df = df.loc[0:20, :]
+        else:
+            # df = df.loc[0:20, :]
+            df = df.loc[3:21]
 
         df = snap_to_grid(df, 'SOC') # synchronize SOC values
         df = df.set_index('SOC') # set SOC as index
@@ -158,8 +159,11 @@ def compile_data(temp:int)->pd.DataFrame:
 
 def main():
     for temp in [15, 25, 35, 45]:
+        param_path = (Path(__file__).parent.parent /
+                   "data"/ "parametrization" / f"{temp}deg").resolve() # full path
+        
         # load data
-        data = compile_data(temp)
+        data = compile_data(temp, param_path)
         
         if 0 in data.index:
             data = data.drop(0)  # drop 0% SoC if present

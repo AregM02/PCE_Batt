@@ -1,8 +1,8 @@
 % Initializes all necessary data:
-% (1) setup a global variable fpath pointing to the desired file location (supported types: .mat, .parquet)
+% (1) setup a global variable --fpath-- pointing to the desired file location (supported types: .mat, .parquet)
 % (2) run the command 'initdata' in the shell
-% (!) expected to work flawlessly with metadata from Ahjo/Digatron, adjustments may be needed otherwise;
-% (!!) if this script fails, your custom script needs to initialize the following globa variables:
+% (!) expected to work with metadata from Ahjo/Digatron, adjustments may be needed otherwise;
+% (!!) if this script fails, your custom script needs to initialize the following global variables:
 %      - cc/cd: fitted polynomial coefficients for charge/discharge OCV
 %      - CNom: nominal capacity
 %      - dt: time increment array
@@ -68,6 +68,9 @@ clear idx
 
 % Pulse indices
 ix_pulses = find(strcmp(data.Prozedur,'jri_VTC6_PulseHSOC'));
+if isempty(ix_pulses)
+    ix_pulses = find(strcmp(data.Prozedur,'jri_APR_PulseTest')); % try the other name
+end
 
 % qOCV indices
 ix_qocv = find(strcmp(data.Prozedur,'jri_qOCV_C20'));

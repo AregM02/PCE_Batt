@@ -1,7 +1,7 @@
 % Converts all .mat files to .parquet (better for loading speed, but files are larger)
-relativePath = 'data/validation_new/35'; % path to folder
+relativePath = "C:\Users\aregm\Desktop\Data_APR\35grad"; % path to folder
 matFiles = dir(fullfile(relativePath, '*.mat')); % Get all .mat files
-outputFolder = 'data/validation_new/35';
+outputFolder = "C:\Users\aregm\Desktop\parq\35deg";
 
 for i = 1:length(matFiles)
     filePath = fullfile(relativePath, matFiles(i).name);
