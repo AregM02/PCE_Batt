@@ -5,15 +5,19 @@ import matplotlib.pyplot as plt
 import random
 import yaml
 from scipy.stats import median_abs_deviation
+from .paths import get_project_root
 
-config_dir = Path(__file__).parent.parent / 'config' / 'cfg.yaml'
-with open(config_dir, 'r') as f:
+config_path = get_project_root() / 'config' / 'cfg.yaml'
+config_dir = config_path.parent
+with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
-    file_path = Path(config['simulation']['paths']['validation']['validation_path'])
+
+rel_path = Path(config['simulation']['paths']['validation']['validation_path'])
+file_path = (config_dir / rel_path).resolve()
 
 random.seed(1234)
 
-def load_validation(path = file_path, plot=False):
+def load_validation(path = file_path, plot=False, short=False):
     fnames = [name for name in path.glob('*.parquet')]
     
     dfs = []
@@ -76,7 +80,12 @@ def load_validation(path = file_path, plot=False):
     cap = filtered_cnoms.mean()
     cap_unc = filtered_cnoms.std()/filtered_cnoms.mean()
 
-    return (time, current, [measured_mean, measured_std], soc, T, cap, cap_unc)
+    if not short:
+        return (time, current, [measured_mean, measured_std], soc, T, cap, cap_unc)
+    else:
+        n = 2000
+        return (time[:n], current[:n], [measured_mean[:n], measured_std[:n]],
+                soc[:n], T[:n], cap, cap_unc)
 
 
 if __name__ == "__main__":

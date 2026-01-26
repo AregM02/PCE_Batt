@@ -1,10 +1,18 @@
 import sys
 import chaospy
 import numpy as np
+from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 from collections.abc import Iterable
-from utils import create_logger
+from src.utils import create_logger, get_project_root
+import yaml
+
+config_path = get_project_root() / 'config' / 'cfg.yaml'
+config_dir = config_path.parent
+with open(config_path, 'r') as f:
+    config = yaml.safe_load(f)
+LOG_LEVEL = config['defaults']['logger_level']
 
 
 class CoulombCounterGalerkin():
@@ -15,7 +23,7 @@ class CoulombCounterGalerkin():
 
     def __init__(self, initial_soc: float, capacity: float, 
                  initial_soc_unc: float, capacity_unc: float, 
-                 logger_level: str = 'DEBUG') -> Iterable[np.array, np.array]:
+                 logger_level: str = LOG_LEVEL) -> Iterable[np.array, np.array]:
 
         self.logger = create_logger(__class__.__name__, level = logger_level)
         self.max_solver_step = 1. # set appropriate step size
@@ -36,11 +44,11 @@ class CoulombCounterGalerkin():
         self.logger.info(f"[{__class__.__name__}] Initialized!")
 
 
-    def __call__(self, current: np.array, time: np.array) -> Iterable[np.ndarray, np.ndarray]:
+    def __call__(self, current: np.array, time: np.array) -> Iterable[NDArray, NDArray]:
 
         current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
 
-        def rhs(t:float, x:np.ndarray) -> np.ndarray:
+        def rhs(t:float, x:NDArray) -> NDArray:
             current_t = current_ip(t)
             return current_t * self.b / 3600
         

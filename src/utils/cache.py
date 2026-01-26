@@ -3,10 +3,10 @@ Some functions for caching results and combining with data.
 
 """
 import pickle
-from pathlib import Path
 import numpy as np
+from src.utils.paths import get_project_root
 
-SAVE_LOC = Path(__file__).parent.parent / 'data' / 'cache'
+SAVE_LOC = get_project_root() / 'data' / 'cache'
 
 def save_cache(data, name):
     with open(SAVE_LOC / f'{name}.pkl', 'wb') as file:

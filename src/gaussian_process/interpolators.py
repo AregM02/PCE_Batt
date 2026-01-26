@@ -6,20 +6,18 @@ import logging
 from typing import Dict
 import matplotlib.pyplot as plt
 import yaml
+from src.utils import get_project_root, create_logger
 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-console_handler = logging.StreamHandler()
-logger.addHandler(console_handler)
-
-config_dir = Path(__file__).parent.parent / 'config' / 'cfg.yaml'
-with open(config_dir, 'r') as f:
+config_path = get_project_root() / 'config' / 'cfg.yaml'
+config_dir = config_path.parent
+with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
-    DIST_FOLDER = Path(config['simulation']['paths']['parameters']['dist_folder'])
-    NAME_PATTERN = config['simulation']['paths']['parameters']['file_naming_scheme']
-    TEMPS = list(config['simulation']['temperatures']) #just to make sure its a list
-    PARAM_NAMES = list(config['simulation']['paths']['parameters']['param_labels'])
+
+DIST_FOLDER = (config_dir / Path(config['simulation']['paths']['parameters']['dist_folder'])).resolve()
+NAME_PATTERN = config['simulation']['paths']['parameters']['file_naming_scheme']
+TEMPS = list(config['simulation']['temperatures']) #just to make sure its a list
+PARAM_NAMES = list(config['simulation']['paths']['parameters']['param_labels'])
+LOG_LEVEL = config['defaults']['logger_level']
 
 
 # ---------- MultiIndex BatteryParameterInterpolator ----------
@@ -35,7 +33,8 @@ class BatteryParameterInterpolator:
     """
 
     def __init__(self, temps=TEMPS, data_dir: Path = DIST_FOLDER,
-                 pattern: str = NAME_PATTERN, scalar_names: list = PARAM_NAMES):
+                 pattern: str = NAME_PATTERN, scalar_names: list = PARAM_NAMES,
+                 logger_level: str =LOG_LEVEL):
         self.temps = temps
         self.data_dir = data_dir
         self.pattern = pattern
@@ -46,10 +45,12 @@ class BatteryParameterInterpolator:
         self.corr_interpolator = None
         self.D = None
 
-        logger.info(f"[{self.__class__.__name__}] Setup in progress...")
+        self.logger = create_logger(__class__.__name__, level = logger_level)
+
+        self.logger.info(f"[{self.__class__.__name__}] Setup in progress...")
         self._load_and_prepare_data()
         self._setup_interpolators()
-        logger.info(f"[{self.__class__.__name__}] Initialized!")
+        self.logger.info(f"[{self.__class__.__name__}] Initialized!")
 
 
     def _load_and_prepare_data(self):

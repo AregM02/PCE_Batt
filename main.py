@@ -1,14 +1,12 @@
-from cell import Cell
 import matplotlib.pyplot as plt
-from utils import load_validation, add_trace, RMSE, load_cached, unify_measurements
+from src.utils import load_validation, add_trace, RMSE
+from src.core import Pack
 
-time, current, measurement, soc, temperature, C_nom, C_nom_unc = load_validation()
+time, current, measurement, soc, temperature, C_nom, C_nom_unc = load_validation(short=True)
+cell_params = dict(initial_soc=soc[0], capacity=C_nom, capacity_unc=C_nom*C_nom_unc)
 
-cell = Cell(initial_soc=soc[0], capacity=C_nom, capacity_unc=C_nom*C_nom_unc)
+cell = Pack("1", cell_params=cell_params)
 cell.solve(current=current, time=time, temperature=temperature)
-
-# Load cached PCE simulation at 25deg (saves time)
-cell.voltage.mean, cell.voltage.std = unify_measurements(cell.voltage.mean, cell.voltage.std, *load_cached('vpce25'))
 
 # -----PLOTS-----
 fig, ax = plt.subplots(figsize = (24, 16))

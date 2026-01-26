@@ -3,12 +3,12 @@ import numpy as np
 from collections.abc import Iterable
 import yaml
 import importlib
-from pathlib import Path
 from ..base import Model
-from utils import create_logger
+from src.utils import create_logger, get_project_root
 
 
-CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'cfg.yaml'
+CONFIG_PATH = get_project_root() / 'config' / 'cfg.yaml'
+
 
 class BatteryModel(Model):
     """
@@ -42,7 +42,7 @@ class BatteryModel(Model):
         self.submodels = instances
 
         # save as dict for easier access
-        self.submodel_dict = {f'{k.__class__.__name__}' : k for k in self.submodels}
+        self.submodel_dict = {k.model_type : k for k in self.submodels}
 
 
     def solve(self, current, time, soc, T):

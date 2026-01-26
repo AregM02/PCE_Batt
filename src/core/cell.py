@@ -1,5 +1,5 @@
-from models.composite import BatteryModel
-from soc_estimation import CoulombCounterGalerkin
+from src.models.composite import BatteryModel
+from src.soc_estimation import CoulombCounterGalerkin
 from types import SimpleNamespace
 import numpy as np
 
@@ -46,4 +46,5 @@ class Cell:
         return self.model.get_submodels()
     
     def __str__(self):
-        return f"Battery Cell Object with Submodels:\n{self.model.__str__()}"
+        return f"Battery Cell with Submodels:\n{self.model.__str__()}"
+    

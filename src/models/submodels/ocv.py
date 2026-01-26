@@ -1,19 +1,19 @@
 import math
-from pathlib import Path
 import pandas as pd
 import numpy as np
+from numpy.typing import NDArray
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 from scipy.interpolate import interp1d
-from scipy.integrate import solve_ivp
 import chaospy
-from utils import create_logger
+from src.utils import create_logger, get_project_root
 from ..base import Model
 import matplotlib.pyplot as plt
+from types import SimpleNamespace
 
 
-PATH_QOCV = Path(__file__).parent.parent.parent / 'data' / 'measurements' / 'qocv20'
+PATH_QOCV = get_project_root() / 'data' / 'measurements' / 'qocv20'
 
 
 class OCV(Model):
@@ -22,8 +22,12 @@ class OCV(Model):
     
     """
 
+    def __init__(self):
+        self.model_type = 'ocv'
+        self.voltage = SimpleNamespace()
+
     @abstractmethod
-    def solve(self, *args, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
+    def solve(self, *args, **kwargs) -> Iterable[NDArray, NDArray]:
         pass
 
 
@@ -57,11 +61,11 @@ class qOCV_POLY(OCV):
         self.logger.info(f"[{self.logger.name}] Initialized!")
 
 
-    def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
+    def solve(self, **kwargs) -> Iterable[NDArray, NDArray]:
         """
         Parameters
         ----------
-            **kwargs : dict of np.ndarray
+            **kwargs : dict of NDArray
                 Input arrays. Keys: 'soc', 'T'.
         """
         soc = kwargs['soc'][0]
@@ -91,7 +95,8 @@ class qOCV_POLY(OCV):
         # Linear interpolation    
         ocv_interp = ocv0 + (ocv1 - ocv0) * (T_clip - t0) / (t1 - t0)
   
-        return ocv_interp, np.zeros_like(ocv_interp)
+        self.voltage.mean, self.voltage.std = ocv_interp, np.zeros_like(ocv_interp)
+        return self.voltage.mean, self.voltage.std
 
 
 class qOCV_PCE(qOCV_POLY):
@@ -122,7 +127,7 @@ class qOCV_PCE(qOCV_POLY):
             self.A_inv = np.linalg.inv(A)
         
 
-    def get_beta(self, alpha:np.ndarray, mu_t: np.ndarray, sigma_t:np.ndarray) -> np.ndarray:
+    def get_beta(self, alpha:NDArray, mu_t: NDArray, sigma_t:NDArray) -> NDArray:
         """
         alpha: array shape (N+1,) with alpha[n] for x^n (ascending)
         mu_t, sigma_t: arrays shape (T,)
@@ -154,11 +159,11 @@ class qOCV_PCE(qOCV_POLY):
         return beta
 
 
-    def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
+    def solve(self, **kwargs) -> Iterable[NDArray, NDArray]:
         """
         Parameters
         ----------
-            **kwargs : dict of np.ndarray
+            **kwargs : dict of NDArray
                 Input arrays. Keys: 'soc', 'T'
         """
 
@@ -174,7 +179,8 @@ class qOCV_PCE(qOCV_POLY):
         beta = self.get_beta(alpha, mu_soc, sigma_soc)
         gamma = self.A_inv@beta
 
-        return gamma[0, :], np.sqrt(np.sum(gamma[1:, :]**2, axis= 0))
+        self.voltage.mean, self.voltage.std = gamma[0, :], np.sqrt(np.sum(gamma[1:, :]**2, axis= 0))
+        return self.voltage.mean, self.voltage.std
 
 
 class qOCV_Differential(OCV):
@@ -246,64 +252,5 @@ class qOCV_Differential(OCV):
         # variance propagation (local linearization)
         v_sigma = np.abs(dvdz_mean) * sigma_soc
 
-        return v_mean, v_sigma
-        
-        
-class Plett_Hysteresis(OCV):
-    """
-    Simulates hysteresis effects with the help of a one-state decay model. 
-    Credit: G.L.Plett "Battery Management Systems Vol. 1, Battery Modeling" 
-    """
-
-    def __init__(self, g: float = 0.05, logger_level: str = 'DEBUG') -> None:
-        super().__init__()
-
-        self.ocv_model = qOCV_POLY(logger_level="CRITICAL") # model needs ocv charge and discharge
-        self.g = g  # normalized hysteresis decay rates (g = gamma/C_Nom)
-        self.max_solver_step = 20.
-        self.logger = create_logger(__class__.__name__, logger_level)
-
-        self.logger.info(f'[{__class__.__name__}] Initialized!')
-
-
-    def solve(self, **kwargs) -> Iterable[np.ndarray, np.ndarray]:
-        """
-        Parameters
-        ----------
-            **kwargs : dict of np.ndarray
-                Input arrays. Keys: 'soc', 'T', 'time', 'current'.
-        """
-
-        current = kwargs['current']
-        time = kwargs['time'] 
-        soc = kwargs['soc']
-        T = kwargs['T']
-
-        self.ocv_model.alpha = 1 # set ocv to charge mode
-        ocv_cha = self.ocv_model.solve(**dict(soc=soc, T=T))[0]
-        self.ocv_model.alpha = 0 # set ocv to discharge mode
-        ocv_dch = self.ocv_model.solve(**dict(soc=soc, T=T))[0]
-        M = np.sign(current)*(ocv_cha-ocv_dch)/2 # maximum ocv polarization
-
-        # interpolators for input arrays
-        current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
-        M_ip = interp1d(time, M, kind='linear', bounds_error=False, fill_value=(M[0], M[-1]))
-
-        # Right-hand-side for the differential equation
-        def rhs(t:float, h:np.ndarray) -> np.ndarray:
-            # Get interpolated soc, current and temperature
-            current_t = current_ip(t)
-            M_t = M_ip(t)
-
-            a = np.abs(current_t*self.g)
-            
-            return a*(-h + M_t)
-
-        voltage = solve_ivp(
-                        fun=rhs, max_step=self.max_solver_step, y0=np.array([0.]),
-                        t_span=(time[0], time[-1]), t_eval=time
-                        ).y.T
-        voltage = voltage.flatten() 
-        
-        return voltage, np.zeros_like(voltage)
-    
+        self.voltage.mean, self.voltage.std = v_mean, v_sigma
+        return self.voltage.mean, self.voltage.std
