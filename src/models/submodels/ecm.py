@@ -158,7 +158,7 @@ class GalerkinPCE(ECM):
                          [chaospy.E(nu[i]*chaospy.outer(Phi, Phi), joint) for i in range(5)]) # shape = (6, basis_size, basis_size)
             self.nu_r = nu[0] # for R0
 
-            self.solution_pce = None
+            self.output_pce = None
 
             self.logger.info(f'[{__class__.__name__}] Initialized!')
 
@@ -258,8 +258,12 @@ class GalerkinPCE(ECM):
                     + chaospy.sum(self.Phi * coefficients2, -1)
                     )
         
-        # store the complete polynomial series for every timestep
-        self.solution_pce = vb_approx
+        # --- (FOR PACK SIMULATION) --- #
+        self.output_pce = vb_approx  
+        self.mu_r0 = mu_r0
+        self.sigma_r0 = sigma_r0
+        self.vb_transient = vb_approx - (mu_r0 + self.nu_r * sigma_r0) * current
+        # ----------------------------- #
 
         mean = chaospy.E(vb_approx, self.joint)
         variance = np.abs(chaospy.Var(vb_approx, self.joint))
@@ -273,6 +277,6 @@ class GalerkinPCE(ECM):
         return mean, sigma
     
     def get_output_expansion(self) -> Tuple[NDArray[chaospy.polynomial], chaospy.joint]:
-        assert self.solution_pce is not None, "No output available at this point: run solve() to get one!"
+        assert self.output_pce is not None, "No output available at this point: run solve() to get one!"
 
-        return self.solution_pce, self.joint
+        return self.output_pce, self.joint
