@@ -13,6 +13,7 @@ from typing import Tuple
 from numpy.typing import NDArray
 from types import SimpleNamespace
 
+
 MAX_SOLVER_STEP = 20.
 
 
@@ -42,11 +43,8 @@ class ECM(Model):
         missing = [v for v in required_vars if v not in params.keys()]
 
         if missing:
-            from utils.parameter_loader import load_vars
-            import inspect
-
             raise ValueError(
-                f"[{self.__class__.__name__}] Interpolator missing required parameters: {missing}. Adjust {inspect.getfile(load_vars)} to initiate all necessary variables for {self.__class__.__name__}."
+                f"[{self.__class__.__name__}] Interpolator missing required parameters: {missing}. Adjust cfg.yaml to initiate all necessary variables."
             )
 
 
@@ -59,14 +57,16 @@ class nRC(ECM):
     """Standard implementation of an nRC ECM."""
 
     def __init__(self, N: int = 2, logger_level: str = 'DEBUG'):
-        
-        # define required variables
-        required_vars = ['R0'] + [var for n in range(1, N+1) for var in (f'tau{n}_inv', f'c{n}_inv')]
+        # define required variables (mu_ prefix required for consistency with local data)
+        self.N = N
+        self.required_vars = ['mu_R0'] + [
+            var for n in range(1, N + 1) for var in (f'mu_tau{n}_inv', f'mu_c{n}_inv')
+        ]
 
         super().__init__()
         self.logger = create_logger(__class__.__name__, logger_level)
         self.interpolator = BatteryParameterInterpolator()
-        self.validate_interpolator(required_vars)
+        self.validate_interpolator(self.required_vars)
 
         self.logger.info(f'[{__class__.__name__}] Initialized!')
 
@@ -74,44 +74,51 @@ class nRC(ECM):
     def solve(self, **kwargs) -> Iterable[NDArray, NDArray]:
 
         current = kwargs['current']
-        time = kwargs['time'] 
+        time = kwargs['time']
         soc = kwargs['soc'][0]
         T = kwargs['T']
 
         self.logger.info(f'[{__class__.__name__}] Starting solver...')
 
-        # interpolators for input arrays
+        # Interpolators for input arrays
         current_ip = interp1d(time, current, kind='linear', bounds_error=False, fill_value=(current[0], current[-1]))
         soc_ip = interp1d(time, soc, kind='linear', bounds_error=False, fill_value=(soc[0], soc[-1]))
         T_ip = interp1d(time, T, kind='linear', bounds_error=False, fill_value=(T[0], T[-1]))
 
-        total_duration = time[-1]-time[0]
-        # Right-hand-side for the system of differential equations
-        def rhs(t:float, x:NDArray) -> NDArray:
-            print_progress(t, time[0], total_duration) # show progress
+        total_duration = time[-1] - time[0]
 
-            # Get interpolated soc, current and temperature
+        # Right-hand-side for the system of differential equations
+        def rhs(t: float, x: NDArray) -> NDArray:
+            print_progress(t, time[0], total_duration)  # show progress
+
             soc_t = soc_ip(t)
             current_t = current_ip(t)
             T_t = T_ip(t)
 
-            # Load and parse interpolated parameters
-            params_t = self.interpolator.get_interpolated_params(soc_t, T_t)
-            params_t = [params_t[name] for name in params_t.keys()]
-            
-            # add up contributions from all branches
-            x_dot = params_t[0]*current_t
-            for tau_inv, c_inv in zip(params_t[1::2], params_t[2::2]):
-                x_dot += -tau_inv*x + c_inv*current_t
+            # Load interpolated parameters
+            params_t = self.interpolator.get_interpolated_params(T_t, soc_t)
+            param_values = [params_t[name] for name in self.required_vars]
 
+            tau_inv = np.array(param_values[1::2])
+            c_inv = np.array(param_values[2::2])
+
+            # Multi-branch ODE
+            x_dot = -tau_inv * x + c_inv * current_t
             return x_dot
-    
-        voltage = solve_ivp(
-                        fun=rhs, max_step=self.max_solver_step, y0=np.array([0.]),
-                        t_span=(time[0], time[-1]), t_eval=time
-                        ).y.T
-        voltage = voltage.flatten() 
-        
+
+        # Initial state: one per RC branch
+        y0 = np.zeros(self.N)
+
+        # Solve the system
+        states = solve_ivp(
+            fun=rhs, max_step=self.max_solver_step, y0=y0,
+            t_span=(time[0], time[-1]), t_eval=time
+        ).y.T  # shape = (len(time), N)
+
+        # Compute total voltage
+        r0 = self.interpolator.get_interpolated_params(T, soc)[self.required_vars[0]]
+        voltage = np.sum(states, axis=1) + r0 * current
+
         self.voltage.mean, self.voltage.std = voltage, np.zeros_like(voltage)
 
         return voltage, np.zeros_like(voltage)

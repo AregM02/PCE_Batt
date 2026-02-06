@@ -1,19 +1,25 @@
 import math
+from pathlib import Path
 import pandas as pd
 import numpy as np
+import chaospy
 from numpy.typing import NDArray
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 from scipy.interpolate import interp1d
-import chaospy
 from src.utils import create_logger, get_project_root
 from ..base import Model
 import matplotlib.pyplot as plt
 from types import SimpleNamespace
+import yaml
 
+config_path = get_project_root() / 'config' / 'cfg.yaml'
+config_dir = config_path.parent
+with open(config_path, 'r') as f:
+    config = yaml.safe_load(f)
 
-PATH_QOCV = get_project_root() / 'data' / 'measurements' / 'qocv20'
+PATH_QOCV = config_dir / Path(config['simulation']['paths']['ocv']['ocv_folder'])
 
 
 class OCV(Model):

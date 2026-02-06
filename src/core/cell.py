@@ -6,9 +6,10 @@ import numpy as np
 
 class Cell:
     def __init__(self, capacity: float, initial_soc: float, 
-                 initial_soc_unc: float = 1e-3, capacity_unc: float = 1e-3):
+                 initial_soc_unc: float = 1e-3, capacity_unc: float = 1e-3,
+                 config_path = None):
         
-        self.model = BatteryModel()
+        self.model = BatteryModel(config_path)
         self.soc_counter = CoulombCounterGalerkin(initial_soc=initial_soc, capacity=capacity,
                                                   initial_soc_unc=initial_soc_unc, capacity_unc=capacity_unc)
 

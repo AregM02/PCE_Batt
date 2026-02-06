@@ -6,7 +6,6 @@ import importlib
 from ..base import Model
 from src.utils import create_logger, get_project_root
 
-
 CONFIG_PATH = get_project_root() / 'config' / 'cfg.yaml'
 
 
@@ -16,17 +15,19 @@ class BatteryModel(Model):
 
     """
 
-    def __init__(self, submodels: Iterable[Model] = None):
+    def __init__(self, config_path = None):
         super().__init__()
-
         self.logger = create_logger(__class__.__name__)
+
+        if config_path is None:
+            config_path = CONFIG_PATH
 
         # get the config (which models to compose)
         try:
-            with open(CONFIG_PATH, "r") as f:
+            with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
         except FileNotFoundError:
-            self.logger.fatal(f"Error while fetching config at {CONFIG_PATH}. Check if the file is available.")
+            self.logger.fatal(f"Error while fetching config at {config_path}. Check if the file is available.")
             raise SystemExit
         
         # import required submodels and instantiate
