@@ -9,7 +9,7 @@ Before installing, ensure you have Python 3.10 or higher. It is highly recommend
 ### 1. Clone the Repository
 Clone this repository to your local machine and navigate into the folder:
 ```Bash
-git clone "https://git.rwth-aachen.de/jonas.rinner/probabilistic-modelling-for-batteries.git"
+git clone https://github.com/AregM02/PCE_Batt.git
 cd probabilistic-modelling-for-batteries
 ```
 
