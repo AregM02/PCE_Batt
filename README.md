@@ -10,7 +10,7 @@ Before installing, ensure you have Python 3.10 or higher. It is highly recommend
 Clone this repository to your local machine and navigate into the folder:
 ```Bash
 git clone https://github.com/AregM02/PCE_Batt.git
-cd probabilistic-modelling-for-batteries
+cd PCE_Batt
 ```
 
 ### 2. Install the Package
