@@ -1,21 +1,57 @@
-# Probabilistic Modelling for Batteries
+# pcebatt (PCE-based Battery Cell Simulation)
 
-## Formatting of parquets in data/distributions
----
-Data containing the necessary parameter distributions for interpolation are stored in [data/distributions](data/distributions). The default naming scheme is `temperature +'deg.parquet'`. This can be changed if needed, however make sure to adjust the following functions:
-- `BatteryParameterInterpolator._load_distribution` in [interpolators.py](gaussian_process/interpolators.py)
----
+This repository contains the pcebatt Python package for battery cell simulation.
 
-Below is an example of the currently expected file contents:
+## Prerequisites
+Before installing, ensure you have Python 3.10 or higher. It is highly recommended to use a virtual environment (Conda or venv) to avoid dependency conflicts.
 
+## Installation
+### 1. Clone the Repository
+Clone this repository to your local machine and navigate into the folder:
+```Bash
+git clone "https://git.rwth-aachen.de/jonas.rinner/probabilistic-modelling-for-batteries.git"
+cd probabilistic-modelling-for-batteries
+```
 
-![alt text](assets/dist_example.png)
+### 2. Install the Package
+Once you are in the project directory, you can install the package:
 
-If you have configured a custom file structure in [compile_distributions.py](matlab_parameter_estimator/compile_distributions.py), please also define how its contents should be parsed in [parameter_loader.py](utils/parameter_loader.py). You are also free to define your own variable names, which will be assigned to their respective interpolators by the method `BatteryParameterInterpolator._set_data()`. Note, however, that the models in [ecm.py](models/ecm.py) expect certain naming schemes. For example, `GalerkinPCE` method expects the following variable names:
-- `mu_tau1_inv`, `sigma_tau1_inv`
-- `mu_c1_inv`, `sigma_c1_inv`
-- `mu_tau2_inv`, `sigma_tau2_inv`
-- `mu_c2_inv`, `sigma_c2_inv`
-- `rho1`, `rho2`
+```Bash 
+pip install .
+```
 
-You can either stick to those or tweak the model implementation to match your own (more work).
+### 3. Verification
+To ensure the package is installed correctly and all dependencies are resolved, run the following line. This confirms Python is using the globally installed version in site-packages rather than the local source folder:
+
+```Bash
+python -c "import pcebatt; print(f'Installed at: {pcebatt.__file__}')"
+```
+
+## Running Tests
+To verify proper functionality, you can use the included tests. To do so, follow the steps below.
+
+<ins>Install test dependencies</ins>: Ensure you are inside the probabilistic-modelling-for-batteries directory and run:
+```Bash
+pip install ".[test]"
+```
+
+<ins>Run the validation test</ins>:
+Navigate away from the repository folder (e.g., up one level) and point pytest to the test script:
+```Bash
+cd ..
+pytest probabilistic-modelling-for-batteries/tests/test_simulation.py
+```
+## Usage
+You can find examples of how to utilize the pcebatt package within the examples/ directory. These notebooks demonstrate how to configure simulations and interpret results using the PCE framework.
+
+<ins>Project Structure</ins>
+
+    pcebatt/: The core source code for the battery simulation package.
+
+    examples/: Jupyter notebooks and scripts demonstrating package usage.
+
+<ins>Troubleshooting</ins>
+
+    Dependency Conflicts: If you encounter issues with numpy or scipy, ensure your virtual environment is clean and that you are using a compatible version of Python (>=3.10).
+
+    Missing Data: The MANIFEST.in file is configured to include all files within the pcebatt/ directory. If you have added new data files to the package and they are not being included in the build, ensure they are tracked by Git and that the MANIFEST.in rules cover them.

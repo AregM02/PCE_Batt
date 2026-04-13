@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcebatt"
+version = "1.0.0"
+description = "A PCE-based battery cell simulation package."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Areg Melkumyan", email = "aregmelkumyan26@gmail.com" }]
+
+dependencies = [
+    "chaospy >= 4.3.20",
+    "matplotlib >= 3.5.0",
+    "numpy >= 1.23.0, < 2.0.0",
+    "pandas >= 2.2.2",
+    "pyyaml >= 6.0",
+    "scipy >= 1.10.0",
+    "numpoly == 1.2.12",
+    "pyarrow >= 14.0.0",
+    "fastparquet"
+]
+
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pcebatt*"]
+exclude = ["*.pycache", "*.pycache.*", "__pycache__*", "pcebatt.data*", "pcebatt.config*"]

@@ -1,0 +1,31 @@
+# THIS IS A DUMMY CONFIGURATION  FILE USED IN AN EXAMPLE
+
+defaults:
+  logger_level: &LOG_LEVEL ERROR
+
+models:
+  # ECM
+  - class: nRC
+    module: pcebatt.models.submodels.ecm
+    kwargs:
+      logger_level: *LOG_LEVEL
+
+
+simulation:
+  temperatures: [15, 25, 35, 45]
+
+  paths:
+    parameters:
+      dist_folder: "../pcebatt/data/distributions"
+      file_naming_scheme: "{temp}deg.parquet" 
+      param_labels: ['mu_R0', 'sigma_R0', 'mu_tau1_inv', 'sigma_tau1_inv',
+                    'mu_c1_inv', 'sigma_c1_inv', 'mu_tau2_inv', 'sigma_tau2_inv',
+                    'mu_c2_inv', 'sigma_c2_inv'] # parameter names to read in from distribution files
+    ocv:
+      ocv_folder: "../pcebatt/data/measurements/qocv20"
+      file_naming_scheme: 
+        charge: qocv_{temp}deg_charge.parquet
+        discharge: "qocv_{temp}deg_discharge.parquet"
+      
+    validation:
+      validation_path: "../pcebatt/data/measurements/validation"
