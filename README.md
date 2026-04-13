@@ -30,7 +30,7 @@ python -c "import pcebatt; print(f'Installed at: {pcebatt.__file__}')"
 ## Running Tests
 To verify proper functionality, you can use the included tests. To do so, follow the steps below.
 
-<ins>Install test dependencies</ins>: Ensure you are inside the probabilistic-modelling-for-batteries directory and run:
+<ins>Install test dependencies</ins>: Ensure you are inside the PCE_Batt directory and run:
 ```Bash
 pip install ".[test]"
 ```
@@ -39,7 +39,7 @@ pip install ".[test]"
 Navigate away from the repository folder (e.g., up one level) and point pytest to the test script:
 ```Bash
 cd ..
-pytest probabilistic-modelling-for-batteries/tests/test_simulation.py
+pytest PCE_Batt/tests/test_simulation.py
 ```
 ## Usage
 You can find examples of how to utilize the pcebatt package within the examples/ directory. These notebooks demonstrate how to configure simulations and interpret results using the PCE framework.
